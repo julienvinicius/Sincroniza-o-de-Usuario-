@@ -1,0 +1,45 @@
+FROM node:alpine
+
+RUN apk add --update python3 make g++ && rm -rf /var/cache/apk/*
+
+RUN apk add --no-cache tini
+
+ARG ENV
+ENV NODE_ENV=${ENV}
+ARG SERVER_PORT
+ENV SERVER_PORT=${SERVER_PORT}
+ARG CONNECTION_STRING
+ENV CONNECTION_STRING=${CONNECTION_STRING}
+ARG TECNIZA_URL
+ENV TECNIZA_URL=${TECNIZA_URL}
+ARG ALPHACODE_URL
+ENV ALPHACODE_URL=${ALPHACODE_URL}
+ARG ALPHACODE_CLIENT_ID
+ENV ALPHACODE_CLIENT_ID=${ALPHACODE_CLIENT_ID}
+ARG ALPHACODE_CLIENT_SECRET
+ENV ALPHACODE_CLIENT_SECRET=${ALPHACODE_CLIENT_SECRET}
+ARG JWT_SECRET
+ENV JWT_SECRET=${JWT_SECRET}
+ENV PATH_TO_CERT="../../cert.pem"
+
+WORKDIR /app
+
+EXPOSE ${SERVER_PORT}
+
+COPY package*.json ./
+
+RUN npm install -g npm@8.18.0
+
+RUN npm install && npm cache clean --force 
+
+RUN npm install -g typescript
+
+RUN mkdir -p dist
+
+COPY . ./
+
+RUN tsc
+
+ENTRYPOINT ["/sbin/tini","--"]
+
+CMD ["node","dist/main.js"]

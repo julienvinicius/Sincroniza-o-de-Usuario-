@@ -1,0 +1,41 @@
+{
+  "name": "sincronizacao-base-clientes",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/main.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@gitlab.com/m11263/sincronizacao-base-clientes.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://gitlab.com/m11263/sincronizacao-base-clientes/issues"
+  },
+  "homepage": "https://gitlab.com/m11263/sincronizacao-base-clientes#readme",
+  "dependencies": {
+    "@types/axios": "^0.14.0",
+    "@types/mongodb": "^4.0.7",
+    "axios": "^0.27.2",
+    "cors": "^2.8.5",
+    "cpf-cnpj-validator": "^1.0.3",
+    "dotenv": "^16.0.1",
+    "express": "^4.18.1",
+    "mongodb": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.12",
+    "@types/dotenv": "^8.2.0",
+    "@types/express": "^4.17.13",
+    "@types/node": "^17.0.35",
+    "@types/nodemon": "^1.19.1",
+    "nodemon": "^2.0.16",
+    "ts-node": "^10.7.0",
+    "ts-node-dev": "^1.1.8",
+    "typescript": "^4.6.4"
+  }
+}

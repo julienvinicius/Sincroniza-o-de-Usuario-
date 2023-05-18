@@ -1,0 +1,164 @@
+variables:
+  SERVER_PORT: 9001
+  SERVICE_NAME: api-sincroniza-usuario
+  SERVER_URI: ec2-3-130-150-64.us-east-2.compute.amazonaws.com
+  SERVER_IP: 3.130.150.64
+  ECR_REGISTRY: 313918024410.dkr.ecr.us-east-2.amazonaws.com/api-sincroniza-usuario
+  SSH_KEY: ".ssh/acesso-hmp-madero.pem"
+  NODE_ENV: "staging"
+
+stages:
+  - build
+  - build-ecr
+  - deploy
+
+generate_build:
+  stage: build 
+  before_script:
+    - export VERSION=$(cat package.json | jq -r .version)
+    - echo $VERSION
+    - export IMAGE_TAG=$VERSION.$CI_COMMIT_SHORT_SHA
+    - echo $IMAGE_TAG
+    - echo $IMAGE_TAG > version-file.txt
+  script:
+    - |
+      docker build \
+      --build-arg ENV="${NODE_ENV}" \
+      --build-arg SERVER_PORT="${SERVER_PORT}" \
+      --build-arg CONNECTION_STRING="${CONNECTION_STRING}" \
+      --build-arg TECNIZA_URL="${TECNIZA_URL}" \
+      --build-arg ALPHACODE_URL="${ALPHACODE_URL}" \
+      --build-arg ALPHACODE_CLIENT_ID="${ALPHACODE_CLIENT_ID}" \
+      --build-arg ALPHACODE_CLIENT_SECRET="${ALPHACODE_CLIENT_SECRET}" \
+      --build-arg JWT_SECRET="${JWT_SECRET}" \
+      --tag "${CI_REGISTRY_IMAGE}":"${IMAGE_TAG}" .
+  artifacts:
+    paths:
+      - version-file.txt
+  tags:
+    - shell
+    - aws
+    - cmd
+  only:
+    - develop
+    - dev  
+
+build-to-ecr:
+  stage: build-ecr
+  before_script:
+    - export VERSION=$(cat package.json | jq -r .version)
+    - echo $VERSION
+    - export IMAGE_TAG=$VERSION.$CI_COMMIT_SHORT_SHA
+    - echo $IMAGE_TAG
+    - echo $IMAGE_TAG > version-file.txt
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set region $AWS_DEFAULT_REGION
+    - aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+  script:
+    - |
+      docker build \
+      --build-arg ENV="${NODE_ENV}" \
+      --build-arg SERVER_PORT="${SERVER_PORT}" \
+      --build-arg CONNECTION_STRING="${CONNECTION_STRING}" \
+      --build-arg TECNIZA_URL="${TECNIZA_URL}" \
+      --build-arg ALPHACODE_URL="${ALPHACODE_URL}" \
+      --build-arg ALPHACODE_CLIENT_ID="${ALPHACODE_CLIENT_ID}" \
+      --build-arg ALPHACODE_CLIENT_SECRET="${ALPHACODE_CLIENT_SECRET}" \
+      --build-arg JWT_SECRET="${JWT_SECRET}" \
+      --tag "${SERVICE_NAME}":"${IMAGE_TAG}" .
+    - docker tag "${SERVICE_NAME}":"${IMAGE_TAG}" "${ECR_REGISTRY}":"${IMAGE_TAG}"
+  artifacts:
+    paths:
+      - version-file.txt
+  tags:
+    - shell
+    - aws
+    - cmd
+  only:
+    - master
+    - main
+
+push_to_registry:
+  stage: build
+  needs:
+    - generate_build
+  dependencies:
+    - generate_build
+  before_script:
+    - echo ${CI_REGISTRY_PASSWORD} | docker login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY}
+    - export VERSION=$(cat version-file.txt)
+  script:
+    - docker push ${CI_REGISTRY_IMAGE}:${VERSION}
+  tags:
+    - shell
+    - aws
+    - cmd
+  only:
+    - develop
+    - dev  
+
+push_to_ecr:
+  stage: build-ecr
+  needs:
+    - build-to-ecr
+  dependencies:
+    - build-to-ecr
+  before_script:
+    - echo ${CI_REGISTRY_PASSWORD} | docker login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY}
+    - export VERSION=$(cat version-file.txt)
+    - aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+  script:
+    - docker push ${ECR_REGISTRY}:${VERSION}
+  tags:
+    - shell
+    - aws
+    - cmd
+  only:
+    - master
+    - main  
+
+deploy_to_staging:
+  stage: deploy
+  needs:
+    - generate_build
+    - push_to_registry
+  dependencies:
+    - generate_build
+  before_script:
+    - export VERSION=$(cat version-file.txt)
+    - apk add --update --no-cache git
+    - 'command -v ssh-agent >/dev/null || ( apk add --update openssh )'
+    - chmod 400 ${SSH_PRIVATE_KEY}
+    - ssh -i ${SSH_PRIVATE_KEY} -o StrictHostKeyChecking=no ubuntu@$SERVER_IP "
+      mkdir -p ~/ci-cd || true &&
+      mkdir -p ~/ci-cd/$SERVICE_NAME"
+  variables:
+    TARGET_FILE: ./docker-compose.yaml
+  script:
+    - ssh -i ${SSH_PRIVATE_KEY} -o StrictHostKeyChecking=no ubuntu@$SERVER_IP "echo 'SSH successfull'"
+    - scp -i ${SSH_PRIVATE_KEY} -o StrictHostKeyChecking=no $TARGET_FILE ubuntu@$SERVER_IP:/home/ubuntu/ci-cd/$SERVICE_NAME
+    - ssh -i ${SSH_PRIVATE_KEY} -o StrictHostKeyChecking=no ubuntu@$SERVER_IP "
+        echo ${CI_REGISTRY_PASSWORD} | docker login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY} &&
+        export COMPOSE_PROJECT_NAME=$ENVIRONMENT_$SERVICE_NAME &&
+        export DC_IMAGE_TAG=$VERSION &&
+        export DC_IMAGE_NAME=$CI_REGISTRY_IMAGE &&
+        export DC_APP_PORT=$SERVER_PORT &&
+        cd ~/ci-cd/$SERVICE_NAME &&
+        docker network create microsservices || true &&
+        docker-compose down &&
+        docker-compose up -d"
+  environment:
+    name: staging
+    url: https://cashback-sincroniza-clientes.technoizz.app
+  tags:
+    - docker
+    - aws
+    - remote
+  only:
+    - develop
+    - dev  
+
+
+
+
